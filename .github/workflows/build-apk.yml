@@ -1,0 +1,55 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# The project lives in the readaloud/ subfolder of this repo.
+defaults:
+  run:
+    working-directory: readaloud
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Test the Python backend
+        run: |
+          python -m pip install requests==2.34.2 beautifulsoup4==4.15.0 pypdf==6.17.0
+          python tools/test_backend.py
+
+      - name: Build release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "ReadAloud-${{ github.run_number }}.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: ReadAloud-apk
+          path: readaloud/ReadAloud-*.apk
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: readaloud/ReadAloud-*.apk
